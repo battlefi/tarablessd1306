@@ -1,6 +1,10 @@
 #ifndef _SSD1306_H_
 #define _SSD1306_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+    
 /* For uint(X)_t */
 #include <stdint.h>
 
@@ -113,5 +117,9 @@ bool SSD1306_HWReset( struct SSD1306_Device* DeviceHandle );
 
 bool SSD1306_Init_I2C( struct SSD1306_Device* DeviceHandle, int Width, int Height, int I2CAddress, int ResetPin, WriteCommandProc WriteCommand, WriteDataProc WriteData, ResetProc Reset );
 bool SSD1306_Init_SPI( struct SSD1306_Device* DeviceHandle, int Width, int Height, int ResetPin, int CSPin, spi_device_handle_t SPIHandle, WriteCommandProc WriteCommand, WriteDataProc WriteData, ResetProc Reset );
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
