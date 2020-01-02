@@ -16,6 +16,8 @@
 #include "ssd1306.h"
 #include "ssd1306_draw.h"
 
+#define pgm_read_byte(addr) (*(const unsigned char *)(addr))
+
 __attribute__( ( always_inline ) ) static inline bool IsPixelVisible( struct SSD1306_Device* DeviceHandle, int x, int y )  {
     bool Result = (
         ( x >= 0 ) &&
@@ -66,6 +68,75 @@ void IRAM_ATTR SSD1306_DrawPixel( struct SSD1306_Device* DeviceHandle, int x, in
 
     if ( IsPixelVisible( DeviceHandle, x, y ) == true ) {
         SSD1306_DrawPixelFast( DeviceHandle, x, y, Color );
+    }
+}
+
+void IRAM_ATTR SSD1306_DrawData( struct SSD1306_Device* DeviceHandle, int16_t xMove, int16_t yMove, int16_t width, int16_t height, const uint8_t *data, uint16_t offset, uint16_t bytesInData ) {
+    if (width < 0 || height < 0) return;
+    if (yMove + height < 0 || yMove > DeviceHandle->Height)  return;
+    if (xMove + width  < 0 || xMove > DeviceHandle->Width)   return;
+
+    uint8_t  rasterHeight = 1 + ((height - 1) >> 3); // fast ceil(height / 8.0)
+    int8_t   yOffset      = yMove & 7;
+
+    bytesInData = bytesInData == 0 ? width * rasterHeight : bytesInData;
+
+    int16_t initYMove   = yMove;
+    int8_t  initYOffset = yOffset;
+
+    //
+    int color = SSD_COLOR_WHITE;
+
+    for (uint16_t i = 0; i < bytesInData; i++) {
+
+        // Reset if next horizontal drawing phase is started.
+        if ( i % rasterHeight == 0) {
+            yMove   = initYMove;
+            yOffset = initYOffset;
+        }
+
+        uint8_t currentByte = pgm_read_byte(data + offset + i);
+
+        int16_t xPos = xMove + (i / rasterHeight);
+        int16_t yPos = ((yMove >> 3) + (i % rasterHeight)) * DeviceHandle->Width;
+
+        int16_t dataPos    = xPos  + yPos;
+
+        if (dataPos >=  0  && dataPos < DeviceHandle->FramebufferSize &&
+            xPos    >=  0  && xPos    < DeviceHandle->Width ) {
+
+            if (yOffset >= 0) {
+                switch (color) {
+                    case SSD_COLOR_WHITE:   DeviceHandle->Framebuffer[dataPos] |= currentByte << yOffset; break;
+                    case SSD_COLOR_BLACK:   DeviceHandle->Framebuffer[dataPos] &= ~(currentByte << yOffset); break;
+                    case SSD_COLOR_XOR: DeviceHandle->Framebuffer[dataPos] ^= currentByte << yOffset; break;
+                }
+
+                if (dataPos < (DeviceHandle->FramebufferSize - DeviceHandle->Width)) {
+                    switch (color) {
+                        case SSD_COLOR_WHITE:   DeviceHandle->Framebuffer[dataPos + DeviceHandle->Width] |= currentByte >> (8 - yOffset); break;
+                        case SSD_COLOR_BLACK:   DeviceHandle->Framebuffer[dataPos + DeviceHandle->Width] &= ~(currentByte >> (8 - yOffset)); break;
+                        case SSD_COLOR_XOR: DeviceHandle->Framebuffer[dataPos + DeviceHandle->Width] ^= currentByte >> (8 - yOffset); break;
+                    }
+                }
+            } else {
+                // Make new offset position
+                yOffset = -yOffset;
+
+                //SSD1306_DrawPixelFast(DeviceHandle)
+                switch (color) {
+                  case SSD_COLOR_WHITE:   DeviceHandle->Framebuffer[dataPos] |= currentByte >> yOffset; break;
+                  case SSD_COLOR_BLACK:   DeviceHandle->Framebuffer[dataPos] &= ~(currentByte >> yOffset); break;
+                  case SSD_COLOR_XOR: DeviceHandle->Framebuffer[dataPos] ^= currentByte >> yOffset; break;
+                }
+
+                // Prepare for next iteration by moving one block up
+                yMove -= 8;
+
+                // and setting the new yOffset
+                yOffset = 8 - yOffset;
+            }
+        }
     }
 }
 
